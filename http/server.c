@@ -8,14 +8,15 @@
 #include<netdb.h>
 #include<sys/types.h>
 
-#define bufsize 1024
+#define bufsize 10000
 #define PORT "8080"
 #define BACKLOG 10
 
 // function to handle HTTP GET request
 void getreq(int client)
 {
-  char *html_content="<html><body><h1>This is a simple html server!</h1></body></html>";
+  char *html_content=
+	  "<html><body><h1>This is a simple html server!</h1></body></html>";
   char resp[bufsize];
 
   sprintf(resp, "HTTP/1.1 200 OK\r\n"
@@ -25,9 +26,9 @@ void getreq(int client)
 }
 
 // function to handle HTTP POST request
-void postreq(int client, char *p)
-{
-  printf("Received POST data: %s",p);
+void postreq(int client, char p[])
+{  printf("@1");
+  printf("%s\n",p);
   
   char resp[bufsize];
   char *html_data="<html><body><h1>Post request recieved!!</h1></body></html>";
@@ -37,6 +38,89 @@ void postreq(int client, char *p)
                 "Content-Type: text/html\r\n\r\n%s",strlen(html_data),html_data);
 
   send(client,resp,bufsize,0);
+}
+
+void multipart(int client,char *data)
+{ 
+   // Extract boundary from content-type header
+    char *bound_start = strstr(data, "boundary=");
+  
+    if (!bound_start) {
+        // Invalid request
+        return;
+    }
+    // Move to the actual boundary value
+    char bound[100];
+    char *bound_end=strchr(bound_start,'\n');
+   
+    sscanf(bound_start,"boundary=%s\n",bound);
+    // Parse multipart data
+
+   char *part=strstr(bound_end,bound);
+    while(part)
+    {  printf("\n");
+       char *part_end= strstr(part,bound);
+	    
+       if(!part_end)
+          break;
+	      
+	       // Extract field name and filename from content-disposition
+            char *name_start = strstr(part,"name=\"") + 6;
+	    if(name_start)
+	    {
+            char *name_end = strchr(name_start, '\"');
+            char field_name[256];
+            strncpy(field_name, name_start, name_end - name_start);
+	     field_name[name_end-name_start]='\0';
+	    char *line =strchr(name_end,'\n');
+	    if((line-name_end)>2)
+	    {    
+            char *filename_start = strstr(part, "filename=\"");
+            if (filename_start) {
+                filename_start += 10;
+                char *filename_end = strchr(filename_start, '\"');
+                char filename[256];
+                strncpy(filename, filename_start, filename_end - filename_start);
+                
+	        char *content=strstr(filename_end,"Content-Type:");
+	        char *filedata=strchr(content,'\n');
+	        filedata+=2;
+	        	
+                printf("Field Name:%s\n", field_name);
+                printf("File Name:%s\n", filename);
+		printf("File Data:");
+                while(*filedata!='-')
+		       printf("%c",*filedata++);	
+                 } }
+	    
+	    else {
+                      printf("Field Name:%s\n", field_name);
+	// Extract and print the value (excluding leading newline characters)
+              char *value_start = strchr(name_end, '\n');
+              if (value_start)
+	      {
+              value_start+=3; 
+
+        printf("Field value:");
+         while(*value_start!='-')
+	      printf("%c",*value_start++);	 
+   	      }
+           }
+	    }
+	    
+	  part=strstr(part+1,bound);
+
+	  if(*(part+strlen(bound))=='-')
+		    break;
+          }
+   char resp[bufsize];
+   char *html_data = "<html><body><h1>Post request received!!</h1></body></html>";
+
+   sprintf(resp, "HTTP/1.1 200 OK\r\n"
+                 "Content-Length: %lu\r\n"
+               "Content-Type: text/html\r\n\r\n%s", strlen(html_data), html_data);
+
+    send(client, resp, bufsize, 0);
 }
 
 //function to handle http CONNECT request
@@ -52,14 +136,21 @@ void handle_http_req(int client)//checks for the type of request
   memset(buf,0,sizeof(buf));
 
   recv(client,buf,bufsize,0);
-
+  // printf("%s\n",buf); 
   if(strstr(buf,"GET")!=NULL)
         getreq(client);
   else if(strstr(buf,"POST")!=NULL)
-  { // find start of post_data
+  {  // check if the data is multipart/form-data   
+     char *type;
+     if(type = strstr(buf,"Content-Type: multipart/form-data"))
+     {     multipart(client,buf);}
+     else {
+	     // find start of post_data
     char *start=strstr(buf,"\r\n\r\n");
     start+=4; // move to start of actual data
+    
     postreq(client,start);
+  }
   }
   else if(strstr(buf,"CONNECT")!=NULL)
           connect_req(client);
