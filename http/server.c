@@ -26,10 +26,26 @@ void getreq(int client)
 }
 
 // function to handle HTTP POST request
-void postreq(int client, char p[])
-{  printf("@1");
-  printf("%s\n",p);
+void postreq(int client, char *p)
+{ 
   
+  printf("Recieved Message:\n");
+  int n= strlen(p),count=1;
+ 
+    while((count++)<=n)
+  {  if(*p=='+')
+	  { putchar(' ');
+	  p++;
+	  continue;
+	  }
+     if(*p=='%')
+     {putchar('\n');
+       p+=6;
+       count+=5;	
+       continue;}
+      putchar(*p++);
+  }
+  printf("\n");
   char resp[bufsize];
   char *html_data="<html><body><h1>Post request recieved!!</h1></body></html>";
   
@@ -136,7 +152,7 @@ void handle_http_req(int client)//checks for the type of request
   memset(buf,0,sizeof(buf));
 
   recv(client,buf,bufsize,0);
-  // printf("%s\n",buf); 
+ // printf("%s\n",buf); 
   if(strstr(buf,"GET")!=NULL)
         getreq(client);
   else if(strstr(buf,"POST")!=NULL)
@@ -146,8 +162,8 @@ void handle_http_req(int client)//checks for the type of request
      {     multipart(client,buf);}
      else {
 	     // find start of post_data
-    char *start=strstr(buf,"\r\n\r\n");
-    start+=4; // move to start of actual data
+    char *start=strstr(buf,"\r\n\r\nmessage=")+strlen("\r\n\r\nmessage=");
+    // move to start of actual data
     
     postreq(client,start);
   }
