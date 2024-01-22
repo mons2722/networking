@@ -7,13 +7,41 @@
 #include<netinet/in.h>
 #include<netdb.h>
 #include<sys/types.h>
+#include<openssl/ssl.h>
+#include<openssl/err.h>
 
 #define bufsize 10000
 #define PORT "8080"
 #define BACKLOG 10
 
+// Function to create SSL context
+SSL_CTX *create_sslctx()
+{  
+  SSL_CTX *ctx;
+
+   ctx = SSL_CTX_new(SSLv23_server_method());
+
+    if (!ctx) {
+        ERR_print_errors_fp(stderr);
+        exit(EXIT_FAILURE);
+    }
+
+    // Load the server certificate and private key
+    if (SSL_CTX_use_certificate_file(ctx, "server.crt", SSL_FILETYPE_PEM) <= 0) {
+        ERR_print_errors_fp(stderr);
+        exit(EXIT_FAILURE);
+    }
+
+    if (SSL_CTX_use_PrivateKey_file(ctx, "server.key", SSL_FILETYPE_PEM) <= 0) {
+        ERR_print_errors_fp(stderr);
+        exit(EXIT_FAILURE);
+    }
+
+    return ctx;
+}
+ 
 // function to handle HTTP GET request
-void getreq(int client)
+void getreq(SSL *ssl)
 {
   char *html_content=
 	  "<html><body><h1>This is a simple html server!</h1></body></html>";
@@ -22,11 +50,11 @@ void getreq(int client)
   sprintf(resp, "HTTP/1.1 200 OK\r\n"
                 "Content-Length: %lu\r\n"
                 "Content-Type: text/html\r\n\r\n%s",strlen(html_content),html_content);
- send(client,resp,bufsize,0);
+ SSL_write(ssl,resp,bufsize);
 }
 
 // function to handle HTTP POST request
-void postreq(int client, char *p)
+void postreq(SSL *ssl, char *p)
 { 
   
   printf("Recieved Message:\n");
@@ -53,10 +81,10 @@ void postreq(int client, char *p)
                 "Content-Length: %lu\r\n"
                 "Content-Type: text/html\r\n\r\n%s",strlen(html_data),html_data);
 
-  send(client,resp,bufsize,0);
+  SSL_write(ssl,resp,bufsize);
 }
 
-void multipart(int client,char *data)
+void multipart(SSL *ssl,char *data)
 { 
    // Extract boundary from content-type header
     char *bound_start = strstr(data, "boundary=");
@@ -70,7 +98,7 @@ void multipart(int client,char *data)
     char *bound_end=strchr(bound_start,'\n');
    
     sscanf(bound_start,"boundary=%s\n",bound);
-    // Parse multipart data
+    // Parse multipart data/
 
    char *part=strstr(bound_end,bound);
     while(part)
@@ -136,44 +164,47 @@ void multipart(int client,char *data)
                  "Content-Length: %lu\r\n"
                "Content-Type: text/html\r\n\r\n%s", strlen(html_data), html_data);
 
-    send(client, resp, bufsize, 0);
-}
+   SSL_write(ssl,resp,bufsize);
+
+   }
 
 //function to handle http CONNECT request
-void connect_req(int client)
+void connect_req(SSL *ssl)
 { 
     char *success_response = "HTTP/1.1 200 Connection established\r\n\r\n";
-    send(client, success_response, strlen(success_response), 0);
+    SSL_write(ssl,success_response,bufsize);
+
 }
 
-void handle_http_req(int client)//checks for the type of request
+void handle_http_req(SSL *ssl)//checks for the type of request
 {
   char buf[bufsize];
   memset(buf,0,sizeof(buf));
 
-  recv(client,buf,bufsize,0);
- // printf("%s\n",buf); 
+  SSL_read(ssl,buf,bufsize);
+   
   if(strstr(buf,"GET")!=NULL)
-        getreq(client);
+        getreq(ssl);
   else if(strstr(buf,"POST")!=NULL)
   {  // check if the data is multipart/form-data   
-     char *type;
+    char *type;
      if(type = strstr(buf,"Content-Type: multipart/form-data"))
-     {     multipart(client,buf);}
+     {     multipart(ssl,buf);}
      else {
 	     // find start of post_data
-    char *start=strstr(buf,"\r\n\r\nmessage=")+strlen("\r\n\r\nmessage=");
+    char *start=strstr(buf,"\r\n\r\nmessage=");
+    start+=strlen("\r\n\r\nmessage=");
     // move to start of actual data
     
-    postreq(client,start);
+    postreq(ssl,start);
   }
   }
   else if(strstr(buf,"CONNECT")!=NULL)
-          connect_req(client);
+          connect_req(ssl);
   else
        { //handle other requests and send error message
         char *error="HTTP/1.1 400 Bad Request\r\n\r\nInvalid request";
-        send(client,error,sizeof(error),0);
+        SSL_write(ssl,error,bufsize);
        }
 }
 
@@ -192,6 +223,8 @@ void main() {
     int yes = 1;
     char s[INET6_ADDRSTRLEN];
     int status;
+    SSL *ssl;
+    SSL_CTX *sslctx;
     
     //setup server address struct
     memset(&hint, 0, sizeof(hint));
@@ -207,7 +240,7 @@ void main() {
     for(p=res;p!=NULL;p=p->ai_next)
     { if((sockfd=socket(p->ai_family,p->ai_socktype,p->ai_protocol))==-1)
 	    {  perror("Server:Socket\n");
-	       continue;}
+    	       continue;}
       
       if(setsockopt(sockfd, SOL_SOCKET, SO_REUSEADDR, &yes,sizeof(int)) == -1) 
       {perror("setsockopt");
@@ -246,12 +279,31 @@ void main() {
 
     inet_ntop(caddr.ss_family, get_in_addr((struct sockaddr*)&caddr), s, sizeof(s));
     printf("Server connected to %s\n", s);
+
+    sslctx= create_sslctx();
+    // Create SSL object
+    ssl = SSL_new(sslctx);
+    // Assign the connected socket to the SSL object
+    SSL_set_fd(ssl, newc);
+
+    if (SSL_accept(ssl) <= 0)
+   {    
+    ERR_print_errors_fp(stderr);
+    close(newc);
+    SSL_free(ssl);
+    SSL_CTX_free(sslctx);
+    exit(EXIT_FAILURE);
+   }
     
     while(1)
-    { handle_http_req(newc);
+    { handle_http_req(ssl);
       //infinite loop to handle requests
      }
 
    close(sockfd);
    close(newc);
+
+    SSL_shutdown(ssl);
+    SSL_free(ssl);
+    SSL_CTX_free(sslctx);
 }

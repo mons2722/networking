@@ -9,8 +9,9 @@
 #include<arpa/inet.h>
 #include<string.h>
 
-#define PORT "8080"
-#define BUFSIZE 1000
+#define PORT "8888"
+#define BUFSIZE 10000
+#define host "127.0.0.1"
 
 void *get_in_addr(struct sockaddr *s)
 {
@@ -20,17 +21,19 @@ void *get_in_addr(struct sockaddr *s)
   return &(((struct sockaddr_in6*)s)->sin6_addr);
 }
 
-void send_req(int server,char *method, char *path, char *data)
+void send_req(int server,char method[], char data[])
 {
   char http_req[BUFSIZE];
   
   //construct http request
   if (strcmp(method, "GET") == 0 || strcmp(method, "CONNECT") == 0) {
-        sprintf(http_req,"%s %s HTTP/1.1\r\nHost: localhost\r\n\r\n", method, path);
-    } else if (strcmp(method, "POST") == 0) {
+        sprintf(http_req,"%s HTTP/1.1\r\nHost: localhost\r\n\r\n", method);
+    } 
+  else if (strcmp(method, "POST") == 0) 
+    { 
         sprintf(http_req,
-		"%s %s HTTP/1.1\r\nHost: localhost\r\nContent-Length: %lu\r\n\r\n%s",
-                 method, path, strlen(data), data);
+		"%s HTTP/1.1\r\nHost: localhost\r\nContent-Length: %lu\r\n\r\n%s",
+                 method,strlen(data), data);
     } else {
         fprintf(stderr, "Invalid HTTP method\n");
         close(server);
@@ -43,17 +46,14 @@ void send_req(int server,char *method, char *path, char *data)
 void get_req(int server)
 {
   char method[100];
-  char path[BUFSIZE];
+  
   char data[BUFSIZE];
   
   //take input of path,method and data to send request
   printf("Enter the HTTP method(POST/GET/CONNECT):");
   scanf("%s",method);
 
-  printf("Enter the HTTP path:");
-  scanf("%s",path);
-
-  if(strcmp(method,"POST")==0)
+    if(strcmp(method,"POST")==0)
   {
     printf("Enter data for POST request:");
     fgets(data,sizeof(data),stdin);
@@ -65,7 +65,7 @@ void get_req(int server)
   
   printf("HTTP client connecting to server.......\n");
  
-  send_req(server,method,path,data);
+  send_req(server,method,data);
 }
 
 void recv_req(int server)
@@ -76,24 +76,19 @@ void recv_req(int server)
  printf("Server Response:\n%s\n",buf);
 }
 
-void main(int argc, char *argv[])
+void main()
 {
   int sockfd;
   struct addrinfo hint, *res, *p;
   char s[INET6_ADDRSTRLEN];
   int status;
 
-    if (argc != 2) {
-        fprintf(stderr, "Usage: %s <hostname>\n", argv[0]);
-        exit(1);
-    }
-
-    // Set up address information for the server
+     // Set up address information for the server
     memset(&hint, 0, sizeof(hint));
     hint.ai_family = AF_UNSPEC;
     hint.ai_socktype = SOCK_STREAM;
 
-    if ((status = getaddrinfo(argv[1], PORT, &hint, &res)) != 0) {
+    if ((status = getaddrinfo(host, PORT, &hint, &res)) != 0) {
         fprintf(stderr, "Error %s\n", gai_strerror(status));
         exit(1);
     }
@@ -121,7 +116,7 @@ void main(int argc, char *argv[])
     }
 
     // Convert server address to a readable format
-    inet_ntop(p->ai_family, get_in_addr((struct sockaddr*)p->ai_addr), s, sizeof(s));
+ inet_ntop(p->ai_family, get_in_addr((struct sockaddr*)p->ai_addr), s, sizeof(s));
     printf("Client: Connected to %s\n", s);
 
     // Free the address information
