@@ -18,21 +18,10 @@
 void forward_data(int from_socket, int to_socket)
 {
   char buffer[bufsize];
-  ssize_t bytes;
-
-  while((bytes=recv(from_socket,buffer,bufsize,0))>0)
-       send(to_socket,buffer,bytes,0);
+    
+   recv(from_socket,buffer,bufsize,0);
+   send(to_socket,buffer,bufsize,0);
 }
-
-// function to handle HTTP GET and POST request
-void get_or_post_req(int client,char *buf, int remote)
-{
-//forward data to server
- send(remote,buf,bufsize,0);
- //recieve respone from server and send to client
- forward_data(remote,client);
-}
-
 void *get_in_addr(struct sockaddr *s)
 {
     if (s->sa_family == AF_INET)
@@ -85,7 +74,7 @@ int create_remote()
         exit(1);
     }
 	
-	printf ("$$\n");
+	
     // Convert server address to a readable format
     inet_ntop(p->ai_family, get_in_addr((struct sockaddr*)p->ai_addr), s, sizeof(s));
 
@@ -95,75 +84,16 @@ int create_remote()
 
   return sockfd;
 }
-  
-
-
-//function to handle http CONNECT request
-void connect_req(int client,char *buf,int remote)
-{
-    printf("Handling CONNECT method for %s:%s\n",host,S_PORT);
-    
-     // Perform bidirectional forwarding between the client and the remote server
-        fd_set read_fds;
-        int max_fd = (client > remote) ? client : remote;
-
-        while (1)
-       	{
-            FD_ZERO(&read_fds);
-            FD_SET(client, &read_fds);
-            FD_SET(remote, &read_fds);
-
-            // Use select for multiplexing I/O
-            if (select(max_fd + 1, &read_fds, NULL, NULL, NULL) == -1) 
-	    {
-                perror("Error in select");
-                break;
-            }
-
-            // Forward data from client to remote server
-            if (FD_ISSET(client, &read_fds)) 
-	    {
-                forward_data(client, remote);
-            }
-
-            // Forward data from remote server to client
-            if (FD_ISSET(remote, &read_fds)) 
-	    {
-                forward_data(remote, client);
-            }
-        }
-}
-
-
-
-void handle_http_req(int client,int remote)//checks for the type of request
-{
-  char buf[bufsize];
-  memset(buf,0,sizeof(buf));
-
-  recv(client,buf,bufsize,0);
-  printf("%s\n",buf);
- 
-  if((strstr(buf,"GET")!=NULL)||(strstr(buf,"POST")!=NULL))
-        get_or_post_req(client,buf,remote);
-  else if(strstr(buf,"CONNECT")!=NULL)
-          connect_req(client,buf,remote);
-  else
-       {
-	 //handle other requests and send error message
-        char *error="HTTP/1.1 400 Bad Request\r\n\r\nInvalid request";
-        send(client,error,sizeof(error),0);
-       }
-  }
 
 void main()
-{   int sockfd, newc;
+{  int sockfd, newc;
     struct sockaddr_storage caddr;
     struct addrinfo hint, *res, *p;
     socklen_t sin_size;
     int yes = 1;
     char s[INET6_ADDRSTRLEN];
     int status;
+    char buf[bufsize];
 
      //setup server address struct
     memset(&hint, 0, sizeof(hint));
@@ -216,15 +146,15 @@ void main()
        exit(1);
       }
      
-    inet_ntop(caddr.ss_family, get_in_addr((struct sockaddr*)&caddr), s, sizeof(s));
+  inet_ntop(caddr.ss_family, get_in_addr((struct sockaddr*)&caddr), s, sizeof(s));
     printf("Server connected to %s\n", s);
     
     int remote=create_remote();
 
     while(1)
-    { 
-      handle_http_req(newc,remote);   
-      }
+    { forward_data(newc,remote);
+      forward_data(remote,newc);
+    }
    close(remote); 
    close(sockfd);
    close(newc);
