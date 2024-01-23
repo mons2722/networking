@@ -11,7 +11,7 @@
 #include<openssl/err.h>
 
 #define bufsize 10000
-#define PORT "8080"
+#define PORT "443"
 #define BACKLOG 10
 
 // Function to create SSL context
@@ -40,17 +40,62 @@ SSL_CTX *create_sslctx()
     return ctx;
 }
  
-// function to handle HTTP GET request
-void getreq(SSL *ssl)
+char* Getline(char *data)
 {
+int c;
+char *s;
+char *t=s;
+while (*data!= '\n')
+*s++=*data;
+*s++='\n';
+*s = '\0';
+return t;
+}
+
+// function to handle HTTP GET request
+void getreq(SSL *ssl,char *file)
+{
+  char resp[bufsize];
+  char fname[bufsize];
+ 
+  if(strlen(file)==1)
+  {
   char *html_content=
 	  "<html><body><h1>This is a simple html server!</h1></body></html>";
-  char resp[bufsize];
-
+  
   sprintf(resp, "HTTP/1.1 200 OK\r\n"
                 "Content-Length: %lu\r\n"
-                "Content-Type: text/html\r\n\r\n%s",strlen(html_content),html_content);
- SSL_write(ssl,resp,bufsize);
+           "Content-Type: text/html\r\n\r\n%s",strlen(html_content),html_content);
+  }
+
+  else 
+      {sprintf(fname,".%s",file);
+       FILE *f=fopen(fname,"r");
+
+       if(f!=NULL)
+       { 
+	fseek(f,0,SEEK_END);
+        size_t	fsize=ftell(f);
+	fseek(f,0,SEEK_SET); // go to file begining
+
+	char *content=malloc(fsize);
+	fread(content,1,fsize,f);
+	fclose(f);
+       
+	sprintf(resp, "HTTP/1.1 200 OK\r\n"
+                      "Content-Length: %lu\r\n"
+                      "Content-Type: text/html\r\n\r\n%s", fsize,content);
+	free(content);
+	}
+       else
+       {  // File not found, return 404 error
+        char *error= "<html><body><h1>404 Not Found</h1></body></html>";
+        sprintf(resp, "HTTP/1.1 404 Not Found\r\n"
+                      "Content-Length: %lu\r\n"
+                      "Content-Type: text/html\r\n\r\n%s", strlen(error), error);
+       }
+      }
+  SSL_write(ssl,resp,bufsize);
 }
 
 // function to handle HTTP POST request
@@ -75,7 +120,7 @@ void postreq(SSL *ssl, char *p)
   }
   printf("\n");
   char resp[bufsize];
-  char *html_data="<html><body><h1>Post request recieved!!</h1></body></html>";
+  char *html_data="<html><body><h1>Post request received!!</h1></body></html>";
   
   sprintf(resp,"HTTP/1.1 200 OK\r\n"
                 "Content-Length: %lu\r\n"
@@ -85,7 +130,8 @@ void postreq(SSL *ssl, char *p)
 }
 
 void multipart(SSL *ssl,char *data)
-{ 
+{  
+	printf("%s\n",data);
    // Extract boundary from content-type header
     char *bound_start = strstr(data, "boundary=");
   
@@ -98,6 +144,7 @@ void multipart(SSL *ssl,char *data)
     char *bound_end=strchr(bound_start,'\n');
    
     sscanf(bound_start,"boundary=%s\n",bound);
+    
     // Parse multipart data/
 
    char *part=strstr(bound_end,bound);
@@ -133,9 +180,17 @@ void multipart(SSL *ssl,char *data)
                 printf("Field Name:%s\n", field_name);
                 printf("File Name:%s\n", filename);
 		printf("File Data:");
-                while(*filedata!='-')
-		       printf("%c",*filedata++);	
-                 } }
+
+		char *p;
+		char *key;
+		strcpy(key,bound);
+		strcat(key,"--");
+		strcat(key,"--");
+
+                while(*filedata!='\0'&&)
+		{    printf("%s",p);	
+                 } 
+	    }
 	    
 	    else {
                       printf("Field Name:%s\n", field_name);
@@ -184,7 +239,10 @@ void handle_http_req(SSL *ssl)//checks for the type of request
   SSL_read(ssl,buf,bufsize);
    
   if(strstr(buf,"GET")!=NULL)
-        getreq(ssl);
+  { 	  char filename[100];
+	  sscanf(buf,"GET %s",filename);
+	  getreq(ssl,filename);
+  }
   else if(strstr(buf,"POST")!=NULL)
   {  // check if the data is multipart/form-data   
     char *type;
@@ -277,7 +335,7 @@ void main() {
        exit(1);
       }
 
-    inet_ntop(caddr.ss_family, get_in_addr((struct sockaddr*)&caddr), s, sizeof(s));
+  inet_ntop(caddr.ss_family, get_in_addr((struct sockaddr*)&caddr), s, sizeof(s));
     printf("Server connected to %s\n", s);
 
     sslctx= create_sslctx();
