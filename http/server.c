@@ -19,7 +19,7 @@ SSL_CTX *create_sslctx()
 {  
   SSL_CTX *ctx;
 
-   ctx = SSL_CTX_new(SSLv23_server_method());
+   ctx = SSL_CTX_new(TLS_server_method());
 
     if (!ctx) {
         ERR_print_errors_fp(stderr);
