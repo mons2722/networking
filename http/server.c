@@ -18,7 +18,7 @@
 SSL_CTX *create_sslctx()
 {  
   SSL_CTX *ctx;
-
+  double x;
    ctx = SSL_CTX_new(TLS_server_method());
 
     if (!ctx) {
@@ -27,31 +27,19 @@ SSL_CTX *create_sslctx()
     }
 
     // Load the server certificate and private key
-    if (SSL_CTX_use_certificate_file(ctx, "server.crt", SSL_FILETYPE_PEM) <= 0) {
-        ERR_print_errors_fp(stderr);
+   if (SSL_CTX_use_certificate_file(ctx, "server.crt", SSL_FILETYPE_PEM) <= 0)
+   {    ERR_print_errors_fp(stderr);
         exit(EXIT_FAILURE);
     }
-
-    if (SSL_CTX_use_PrivateKey_file(ctx, "server.key", SSL_FILETYPE_PEM) <= 0) {
-        ERR_print_errors_fp(stderr);
+ 
+    if (SSL_CTX_use_PrivateKey_file(ctx, "server.key", SSL_FILETYPE_PEM) <= 0)
+    {  ERR_print_errors_fp(stderr);
         exit(EXIT_FAILURE);
     }
-
+ 
     return ctx;
 }
  
-char* Getline(char *data)
-{
-int c;
-char *s;
-char *t=s;
-while (*data!= '\n')
-*s++=*data;
-*s++='\n';
-*s = '\0';
-return t;
-}
-
 // function to handle HTTP GET request
 void getreq(SSL *ssl,char *file)
 {
@@ -131,7 +119,6 @@ void postreq(SSL *ssl, char *p)
 
 void multipart(SSL *ssl,char *data)
 {  
-	printf("%s\n",data);
    // Extract boundary from content-type header
     char *bound_start = strstr(data, "boundary=");
   
@@ -176,20 +163,22 @@ void multipart(SSL *ssl,char *data)
 	        char *content=strstr(filename_end,"Content-Type:");
 	        char *filedata=strchr(content,'\n');
 	        filedata+=2;
-	        	
+		        	
                 printf("Field Name:%s\n", field_name);
                 printf("File Name:%s\n", filename);
-		printf("File Data:");
 
-		char *p;
-		char *key;
-		strcpy(key,bound);
-		strcat(key,"--");
-		strcat(key,"--");
-
-                while(*filedata!='\0'&&)
-		{    printf("%s",p);	
-                 } 
+		char *end=strstr(filedata,"\n-------------");
+	        if(!end)
+		{ printf("File not supported!!\n");
+		   break;}
+	       else{	
+		char file_content[bufsize];
+		
+                strncpy(file_content,filedata,end-filedata);
+		file_content[end-filedata]='\0';
+        	 printf("File Data:\n%s",file_content);
+	       }
+           }     
 	    }
 	    
 	    else {
@@ -296,7 +285,8 @@ void main() {
     }
 
     for(p=res;p!=NULL;p=p->ai_next)
-    { if((sockfd=socket(p->ai_family,p->ai_socktype,p->ai_protocol))==-1)
+    {
+	    if((sockfd=socket(p->ai_family,p->ai_socktype,p->ai_protocol))==-1)
 	    {  perror("Server:Socket\n");
     	       continue;}
       
