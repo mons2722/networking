@@ -107,16 +107,14 @@ void postreq(SSL *ssl, char *p)
   }
   printf("\n");
   char resp[bufsize];
-  char *html_data="<h1>Post request received!!</h1>";
+  char *html_data="<html><body><h1>Post request received!!</h1></body></html>";
   
   sprintf(resp,"HTTP/1.1 200 OK\r\n"
-               "Content-Type: text/plain\r\n"
-               "Access-Control-Allow-Origin: *\r\n"
-	       // Allow from any origin
-	       "Access-Control-Allow-Headers: *\r\n"
-               "\r\n%s",html_data);
-  SSL_write(ssl,resp,strlen(resp));
+                "Content-Length: %lu\r\n"
+                "Content-Type: text/html\r\n\r\n%s",
+		strlen(html_data),html_data);
 
+  SSL_write(ssl,resp,bufsize);
 }
 
 void multipart(SSL *ssl,char *data)
@@ -228,7 +226,7 @@ void handle_http_req(SSL *ssl)//checks for the type of request
   memset(buf,0,sizeof(buf));
  
   SSL_read(ssl,buf,bufsize);
-//  printf("%s\n",buf);
+  printf("%s\n",buf);
    
   if(strstr(buf,"GET")!=NULL)
   { 	  char filename[100];
@@ -320,12 +318,11 @@ void main() {
     }
     
     printf("Server:Waiting for connections on port %s.....\n",PORT);
-   while(1)
-   {
+
       sin_size= sizeof(caddr);
       newc=accept(sockfd,(struct sockaddr *)&caddr,&sin_size);
       if(newc==-1)
-     {perror("Server:Accept\n");
+      {perror("Server:Accept\n");
        exit(1);
       }
 
@@ -338,8 +335,7 @@ void main() {
     OpenSSL_add_all_algorithms();
     sslctx= create_sslctx();
     // Create SSL object
-    
-      ssl = SSL_new(sslctx);
+    ssl = SSL_new(sslctx);
     // Assign the connected socket to the SSL object
     SSL_set_fd(ssl, newc);
 
@@ -352,13 +348,15 @@ void main() {
     exit(EXIT_FAILURE);
    }
     
-    handle_http_req(ssl);
+    while(1)
+    { handle_http_req(ssl);
       //infinite loop to handle requests
-    
-    close(newc);
-    SSL_shutdown(ssl);
-      SSL_free(ssl); 
-    SSL_CTX_free(sslctx);
-   }
+     }
+
    close(sockfd);
+   close(newc);
+
+    SSL_shutdown(ssl);
+    SSL_free(ssl);
+    SSL_CTX_free(sslctx);
 }
