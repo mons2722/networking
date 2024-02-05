@@ -7,47 +7,20 @@
 #include<netinet/in.h>
 #include<netdb.h>
 #include<sys/types.h>
-#include<openssl/ssl.h>
-#include<openssl/err.h>
 
 #define bufsize 10000
-#define PORT "443"
+#define PORT "8080"
 #define BACKLOG 10
 
-SSL *ssl1=NULL,*ssl2=NULL;
-
-// Function to create SSL context
-SSL_CTX *create_sslctx()
-{  
-  SSL_CTX *ctx;
-  
-   ctx = SSL_CTX_new(SSLv23_server_method());
-
-    if (!ctx) {
-        ERR_print_errors_fp(stderr);
-        exit(EXIT_FAILURE);
-    }
-
-    // Load the server certificate and private key
-   if (SSL_CTX_use_certificate_file(ctx, "server.crt", SSL_FILETYPE_PEM) <= 0)
-   {    ERR_print_errors_fp(stderr);
-        exit(EXIT_FAILURE);
-    }
-    if (SSL_CTX_use_PrivateKey_file(ctx, "server.key", SSL_FILETYPE_PEM) <= 0)
-    {  ERR_print_errors_fp(stderr);
-        exit(EXIT_FAILURE);
-    }
- 
-    return ctx;
-}
+int cl1=0,cl2=0;
  
 // function to handle HTTP GET request
-void getreq(SSL *ssl,char *file)
+void getreq(int client,char *file)
 {
   char resp[bufsize];
   char fname[bufsize];
  
-  if(strlen(file)==1)
+  if(strlen(file)==1||strlen(file)==0)
   {
   char *html_content=
 	  "<html><body><h1>This is a simple html server!</h1></body></html>";
@@ -87,23 +60,23 @@ void getreq(SSL *ssl,char *file)
                       "Content-Type: text/html\r\n\r\n%s", strlen(error), error);
        }
       }
-  SSL_write(ssl,resp,bufsize);
+ send(client,resp,bufsize,0);
 }
 
-void forward(SSL *to,char *mes)
+void forward(int to,char *mes)
 { 
-  SSL_write(to,mes,strlen(mes));
+  send(to,mes,bufsize,0);
 }  
 // function to handle HTTP POST request
-void postreq(SSL *ssl, char *p)
+void postreq(int client, char *p)
 { 
   printf("\nRecieved Message:\n");
   int n= strlen(p),count=1;
-  int cid=SSL_get_ex_data(ssl,0);
-  if(cid==1)
-    forward(ssl2,p);
+  
+  if(client==cl1)
+    forward(cl2,p);
   else
-    forward(ssl1,p);
+    forward(cl1,p);
     while((count++)<=n)
   {  if(*p=='+')
 	  { putchar(' ');
@@ -127,11 +100,11 @@ void postreq(SSL *ssl, char *p)
 	       // Allow from any origin
 	       "Access-Control-Allow-Headers: *\r\n"
                "\r\n%s",html_data);
-  SSL_write(ssl,resp,strlen(resp));
+  send(client,resp,strlen(resp),0);
 
   }
 
-void multipart(SSL *ssl,char *data)
+void multipart(int client,char *data)
 {  
    // Extract boundary from content-type header
     char *bound_start = strstr(data, "boundary=");
@@ -222,51 +195,51 @@ void multipart(SSL *ssl,char *data)
                  "Content-Length: %lu\r\n"
                "Content-Type: text/html\r\n\r\n%s", strlen(html_data), html_data);
 
-   SSL_write(ssl,resp,bufsize);
+   send(client,resp,bufsize,0);
 
    }
 
 //function to handle http CONNECT request
-void connect_req(SSL *ssl)
+void connect_req(int client)
 { 
     char *success_response = "HTTP/1.1 200 Connection established\r\n\r\n";
-    SSL_write(ssl,success_response,bufsize);
+     send(client,success_response,bufsize,0);
 
 }
 
-void handle_http_req(SSL *ssl)//checks for the type of request
+void handle_http_req(int client)//checks for the type of request
 {
   char buf[bufsize];
   memset(buf,0,sizeof(buf));
  
-  SSL_read(ssl,buf,bufsize);
+  recv(client,buf,bufsize,0);
 //  printf("%s\n",buf);
    
   if(strstr(buf,"GET")!=NULL)
   { 	  char filename[100];
 	  sscanf(buf,"GET %s",filename);
-	  getreq(ssl,filename);
+	  getreq(client,filename);
   }
   else if(strstr(buf,"POST")!=NULL)
   {  // check if the data is multipart/form-data   
     char *type;
      if(type = strstr(buf,"Content-Type: multipart/form-data"))
-     {     multipart(ssl,buf);}
+     {     multipart(client,buf);}
      else {
 	     // find start of post_data
     char *start=strstr(buf,"\r\n\r\n");
     start+=strlen("\r\n\r\n");
     // move to start of actual data
     
-    postreq(ssl,start);
+    postreq(client,start);
   }
   }
   else if(strstr(buf,"CONNECT")!=NULL)
-          connect_req(ssl);
+          connect_req(client);
   else
        { //handle other requests and send error message
         char *error="HTTP/1.1 400 Bad Request\r\n\r\nInvalid request";
-        SSL_write(ssl,error,bufsize);
+        send(client,error,bufsize,0);
        }
 }
 
@@ -285,8 +258,7 @@ void main() {
     int yes = 1;
     char s[INET6_ADDRSTRLEN];
     int status;
-    SSL *ssl;
-    SSL_CTX *sslctx;
+   
     
     //setup server address struct
     memset(&hint, 0, sizeof(hint));
@@ -340,46 +312,24 @@ void main() {
      {perror("Server:Accept\n");
        exit(1);
       }
-
    
-    SSL_library_init();
-    SSL_load_error_strings();
-    ERR_load_BIO_strings();
-    OpenSSL_add_all_algorithms();
-    sslctx= create_sslctx();
-    // Create SSL object
-    
-    ssl = SSL_new(sslctx);
-    // Assign the connected socket to the SSL object
-    SSL_set_fd(ssl, newc);
-    
-    if (SSL_accept(ssl) <= 0)
-   {    
-    ERR_print_errors_fp(stderr);
-    close(newc);
-    SSL_free(ssl);
-    SSL_CTX_free(sslctx);
-    exit(EXIT_FAILURE);
-   }
-   else 
-   { if(ssl1==NULL)
-      {ssl1=ssl;
+      if(cl1==0)
+      {
+        cl1=newc;
        printf("\nConnected to Client 1");
-       SSL_set_ex_data(ssl, 0, (void *)1);
+       
       }
-      else if(ssl2==NULL)
-      {ssl2=ssl;
+      else if(cl2==0)
+      {cl2=newc;
        printf("\nConnected to Client 2");
-       SSL_set_ex_data(ssl, 0, (void *)2);
-      }
-   }
-   
-       handle_http_req(ssl);
+       }
+     
+      handle_http_req(newc);
               }
-   /*ssl1=ssl2=NULL;
-   SSL_CTX_free(sslctx);
-   SSL_shutdown(ssl);
-   SSL_free(ssl);*/
+  
    close(newc);
+   close(cl1);
+   close(cl2);
    close(sockfd);
 }
+
