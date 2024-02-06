@@ -6,56 +6,41 @@
     <title>Client 1</title>
 
     <script>
-        function connect() {
-            const eventSource = new EventSource('http://localhost:8080/sse');
-            eventSource.onopen = function() {
+        document.addEventListener("DOMContentLoaded", function() {
+            const socket = new WebSocket('ws://localhost:8080');
+
+            socket.onopen = function() {
                 document.getElementById("status").innerText = "Connected to Server";
                 document.getElementById("messageInput").removeAttribute("disabled");
                 document.getElementById("send").removeAttribute("disabled");
             };
-            eventSource.onmessage = function(event) {
+
+            socket.onmessage = function(event) {
                 const message = event.data;
                 const mDiv = document.getElementById("messages");
                 mDiv.innerHTML = message;
             };
-            eventSource.onerror = function(event) {
+
+            socket.onerror = function(event) {
                 console.error('Error connecting to server:', event);
             };
-        }
 
-        function sendMessage() {
-            const messageInput = document.getElementById("messageInput");
-            const message = messageInput.value;
-            
-            fetch('http://localhost:8080', {
-                method: 'POST',
-                headers: { 'Content-Type': 'text/plain' },
-                body: message
-            })
-            .then(response => {
-                if (!response.ok) {
-                    throw new Error('Failed to send message');
-                }
-                return response.text();
-            })
-            .then(data => {
-                const mDiv = document.getElementById("messages");
-                mDiv.innerHTML = data;
-            })
-            .catch(error => {
-                console.error('Error sending message:', error);
-            });
+            function sendMessage() {
+                const messageInput = document.getElementById("messageInput");
+                const message = messageInput.value;
+                socket.send(message);    
+                messageInput.value = ""; // Clear input field
+            }
 
-            messageInput.value = ""; // Clear input field
-        }
+            document.getElementById("send").addEventListener("click", sendMessage);
+        });
     </script>
 </head>
 <body>
     <h1>Client 1</h1>
+    <input type="text" id="messageInput" placeholder="Type a message">
+    <button id="send">Send</button>
     <div id="status"></div>
     <div id="messages"></div>
-    <input type="text" id="messageInput" placeholder="Type a message">
-    <button id="send" onclick="sendMessage()">Send</button>
-    <button id="connection" onclick="connect()">Connect</button>
 </body>
 </html>
