@@ -1,0 +1,245 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Client</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background-color: #f2f2f2;
+            margin: 0;
+            padding: 20px;
+            box-sizing: border-box;
+        }
+
+        .container {
+            max-width: 800px;
+            margin: 20px auto;
+            background-color: #fff;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+        }
+
+        h1 {
+            text-align: center;
+            color: #333;
+        }
+
+        input[type="text"] {
+            width: calc(100% - 70px);
+            padding: 10px;
+            margin-bottom: 10px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+        }
+
+        button {
+            padding: 10px 20px;
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+
+        button:hover {
+            background-color: #45a049;
+        }
+
+        #status {
+            margin-bottom: 10px;
+        }
+
+        #messages {
+            padding: 10px;
+            background-color: #f9f9f9;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            min-height: 200px;
+            max-height: 300px;
+            overflow-y: auto;
+        }
+
+        .message-container {
+            margin-top: 20px;
+             display: flex;
+        }
+        .message-container div {
+            flex: 1;
+            margin-right: 10px;
+        }
+
+        .message-container select {
+            padding: 10px;
+            border-radius: 4px;
+            border: 1px solid #ccc;
+            width: 100%;
+            margin-bottom: 10px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container" id="usernameContainer">
+        <h1>Choose Your Username</h1>
+        <input type="text" id="usernameInput" placeholder="Enter your username">
+        <button id="setUsername">Log In</button>
+    </div>
+
+    <div class="container" id="chatContainer" style="display: none;">
+        <h1>Welcome <span id="usernameDisplay"></span></h1>
+        <div class="message-container">
+         <div>
+                <h2>Group Chat</h2>
+        <div id="status"></div>
+        <div id="messages"></div>
+        <div class="message-container">
+         <input type="text" id="messageInputGroup" placeholder="Type a message">
+        <button id="sendGroup">Send</button>
+        
+        </div>
+    <div>
+         <h2>Personal Chat</h2>
+                <select id="onlineClients">
+                    <!-- Dropdown for online clients will be populated dynamically -->
+                </select>
+                <div id="messagesPersonal"></div>
+                <input type="text" id="messageInputPersonal" placeholder="Type a message">
+                <button id="sendPersonal">Send</button>
+            </div>
+            </div>
+        <button id="logout">Log Out</button>
+    </div>
+    <script>
+        document.addEventListener("DOMContentLoaded", function() {
+            const usernameContainer = document.getElementById("usernameContainer");
+            const chatContainer = document.getElementById("chatContainer");
+            const usernameInput = document.getElementById("usernameInput");
+        const setUsernameButton = document.getElementById("setUsername");
+        const usernameDisplay = document.getElementById("usernameDisplay");
+
+
+            setUsernameButton.addEventListener("click", function() {
+                const username = usernameInput.value.trim();
+                if (username) {
+                    usernameDisplay.textContent = username;
+                    usernameInput.value = "";
+                    usernameContainer.style.display = "none";
+                    chatContainer.style.display = "block";
+                            
+            
+            const socket = new WebSocket('ws://localhost:8080');
+
+            socket.addEventListener("open", (event) => {
+                console.log("WebSocket connection opened:", event);
+                document.getElementById("status").innerText = "You are logged in";
+                // Send the username as a message after the WebSocket connection is established
+                socket.send(username);
+
+            });
+
+    socket.addEventListener("message", (event) => {
+    const message = event.data;
+        
+    const parts = message.split(':');
+    if (parts.length >= 2) 
+    {
+    // If there are at least 2 parts, consider the first part as the username
+    const message_type = parts[0];
+    
+    if(message_type=="GROUP")
+    {
+      if(parts.length>2)
+    { const username=parts[1];
+       const text = parts.slice(2).join(':'); 
+    // Display group message in the group chat section
+    const groupMessagesDiv = document.getElementById("messages");
+    // Format the message and add it to the messages div
+    groupMessagesDiv.innerHTML += `<div><strong>${username}:</strong> ${text}</div>`;
+    } 
+    else 
+    {  groupMessagesDiv.innerHTML += "<div><span style='color: red;'>" + message + "</span></div>";
+    }
+    }
+    else if(message_type=="PERSONAL")
+    {
+       const username=parts[1];
+       const text = parts.slice(2).join(':');
+    const personalMessagesDiv = document.getElementById("messagesPersonal");
+    groupMessagesDiv.innerHTML += `<div><strong>${username}:</strong> ${text}</div>`;
+    }
+    else 
+    {updateDrop(parts);}
+}
+    });
+
+    function updateDrop(parts)
+    {
+    // Clear existing options
+    const onlineClientsDropdown = document.getElementById("onlineClients");
+        onlineClientsDropdown.innerHTML = "";
+
+         // Add a default option
+        const defaultOption = document.createElement("option");
+        defaultOption.text = "Choose a client";
+        onlineClientsDropdown.add(defaultOption);
+
+    parts.forEach((user) => {
+    const option = document.createElement("option");
+    option.value = user;
+    option.text = user;
+    onlineClientsDropdown.add(option);
+});
+    }
+
+            socket.addEventListener("close", (event) => {
+                console.log("WebSocket connection closed:", event);
+            });
+
+            socket.addEventListener("error", (event) => {
+                console.error("WebSocket error:", event);
+            });
+    
+    // Send Group Message Button Click Event
+document.getElementById("sendGroup").addEventListener("click", function()
+ {
+        const message = messageInputGroup.value.trim();
+        if (message)
+         { // Print the message with the prefix "you: " to the messages div
+              const messagesDiv = document.getElementById("messages");
+              messagesDiv.innerHTML += "<div><strong>You:</strong> " + message + "</div>";
+            // Send the group message via WebSocket
+            socket.send("GROUP:" + message);
+            messageInputGroup.value = ""; // Clear the input field after sending
+        }
+    });
+            
+    // Send Personal Message Button Click Event
+    document.getElementById("sendPersonal").addEventListener("click", function() {
+        const recipient = onlineClientsDropdown.value;
+        const message = messageInputPersonal.value.trim();
+        if (recipient && message) {
+            const messagesDiv = document.getElementById("messagesPersonal");
+              messagesDiv.innerHTML += "<div><strong>You:</strong> " + message + "</div>";
+            // Send the personal message via WebSocket
+            socket.send("PERSONAL:" + recipient + ":" + message);
+            messageInputPersonal.value = ""; // Clear the input field after sending
+        }
+    });
+            
+           
+    // Add event listener to the logout button
+    document.getElementById("logout").addEventListener("click", function()
+     {
+        // Close the WebSocket connection when the logout button is clicked
+        socket.close();
+        // Show the username input container and hide the chat container
+        usernameContainer.style.display = "block";
+        chatContainer.style.display = "none";
+    });
+        } });
+        }); 
+    </script>
+</body>
+</html>

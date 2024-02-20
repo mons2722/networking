@@ -238,7 +238,8 @@ void main() {
     }
     
     printf("Server:Waiting for connections on port %s.....\n",PORT);
-
+       while(1)
+       {
       sin_size= sizeof(caddr);
       newc=accept(sockfd,(struct sockaddr *)&caddr,&sin_size);
       if(newc==-1)
@@ -249,11 +250,11 @@ void main() {
     inet_ntop(caddr.ss_family, get_in_addr((struct sockaddr*)&caddr), s, sizeof(s));
     printf("Server connected to %s\n", s);
     
-    while(1)
-    { handle_http_req(newc);
+    handle_http_req(newc);
       //infinite loop to handle requests
      }
 
    close(sockfd);
    close(newc);
+ }
 }

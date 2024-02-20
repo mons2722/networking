@@ -23,6 +23,7 @@ int num=0;
 struct clients
 { int fd;
   int no;
+  char name[100];
 }cl[max];
 // calculate accept_key for websocket
 void get_accept_key(char *sec, char *client_key)
@@ -53,7 +54,8 @@ void get_accept_key(char *sec, char *client_key)
 
     // Remove trailing newline character
     size_t len = strlen(client_key);
-    if (len > 0 && client_key[len - 1] == '\n') {
+    if (len > 0 && client_key[len - 1] == '\n') 
+    {
         client_key[len - 1] = '\0';
     }
 
@@ -170,14 +172,18 @@ int process_websocket_frame (uint8_t *data, size_t length, char **decoded_data, 
     } 
     else if (opcode == 0x8) 
     {  
-        printf ("Client %d disconnected!!\n",cl[index].no);
+        printf("%s disconnected!!\n",cl[index].name);
 	for(int i=index;i<num-1;i++)
 	   cl[i]=cl[i+1];
 	num--;
+	if(num==0)
+	   printf("No clients Connected!!\n");
+	else
+	{
         printf("\nConnected Clients:\n");
 	for(int i=0;i<num;i++)
-	 printf("Client %d\n",cl[i].no);
-    
+	 printf("%s\n",cl[i].name);
+         }
         return -1;
     }
 
@@ -298,18 +304,44 @@ void *handle_client(void *arg)
             continue;
         } 
     
-    printf("Message Received from Client %d: %s\n",cl[index].no,decoded);
-    
+    decoded[strlen(decoded)]='\0';
+    char parts[3][100];
+    int n=0,j;
+    for(int i=0;i<strlen(decoded);i++)
+    {
+      j=0;
+      while(decoded[i]!=':'&&decoded[i]!='\0')
+      { parts[n][j++]=decoded[i++];
+      }
+      parts[n][j]='\0';
+      n++;
+    }
+   	
+    printf("Message Received from %s: %s\n",cl[index].name,decoded);
+   
     char encoded[bufsize];
     int enc_size;
-    //broadcast message
-    enc_size=encode_frame(1,1,0,strlen(decoded),(uint8_t *)decoded,encoded);
+    
+    char message[1024];
+    if(num>1)
+    {
+    sprintf(message,"%s: %s",cl[index].name,decoded);
+    
+     //broadcast message
+    enc_size=encode_frame(1,1,0,strlen(message),(uint8_t *)message,encoded);
     for(int i=0;i<num;i++)
     { if(cl[i].fd!=client)
 	  send(cl[i].fd,encoded,enc_size,0);
             }
     printf("Message sent to all clients!!\n");    
     }
+    else 
+    { //revert sending error to client
+      strcpy(message,"No Active Users!Message not sent.");
+      enc_size=encode_frame(1,1,0,strlen(message),(uint8_t *)message,encoded);
+      send(client,encoded,enc_size,0);   
+     }
+  }
 pthread_exit(NULL);  
 }
 
@@ -320,6 +352,18 @@ void *get_in_addr(struct sockaddr *s) {
         return &(((struct sockaddr_in6*)s)->sin6_addr);
 }
 
+// extraxt user name from the JSON request
+
+void extract_username(int client,int index)
+{
+  char data[bufsize];
+  int bytes=recv(client,data,bufsize,0);
+  data[bytes]='\0';
+  char *username=NULL;
+  int status=process_websocket_frame (data,bytes, &username,client,index);
+  if(status==0)
+  strcpy(cl[index].name,username);
+ }
 void main() {
     int sockfd,client;
     struct sockaddr_storage caddr;
@@ -383,7 +427,8 @@ void main() {
 	websocket_handshake(client, buf);
 	cl[num].fd=client;
 	cl[num].no=num+1;
-	printf("Connected to client %d\n",cl[num].no);
+	extract_username(cl[num].fd,num);
+	printf("Connected to %s\n",cl[num].name);
 	num++;
 	
 	pthread_t thread_id;
