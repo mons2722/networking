@@ -316,28 +316,43 @@ void *handle_client(void *arg)
       parts[n][j]='\0';
       n++;
     }
-   	
-    printf("Message Received from %s: %s\n",cl[index].name,decoded);
-   
+    
     char encoded[bufsize];
     int enc_size;
-    
     char message[1024];
     if(num>1)
     {
     sprintf(message,"%s: %s",cl[index].name,decoded);
-    
-     //broadcast message
+    if(strcmp(parts[0],"GROUP")==0)    
+    {
+    printf("%s Message Received from %s: %s\n",parts[0],cl[index].name,parts[1]);
+    sprintf(message,"%s:%s:%s",parts[0],cl[index].name,parts[1]);
     enc_size=encode_frame(1,1,0,strlen(message),(uint8_t *)message,encoded);
+    //broadcast message
     for(int i=0;i<num;i++)
     { if(cl[i].fd!=client)
-	  send(cl[i].fd,encoded,enc_size,0);
+          send(cl[i].fd,encoded,enc_size,0);
             }
-    printf("Message sent to all clients!!\n");    
+    printf("Message sent to all clients!!\n");
+    }
+    else 
+    {
+       printf("%s Message Received from %s: %s\n",parts[0],cl[index].name,parts[2]);
+    sprintf(message,"%s:%s:%s",parts[0],cl[index].name,parts[2]);
+    enc_size=encode_frame(1,1,0,strlen(message),(uint8_t *)message,encoded);
+    //send personal message
+    for(int i=0;i<num;i++)
+    { if(strcmp(cl[i].name,parts[1])==0)
+	    {send(cl[i].fd,encoded,enc_size,0);
+             printf("Message sent to %s\n",parts[1]);
+              break;
+            }
+    }
+    }
     }
     else 
     { //revert sending error to client
-      strcpy(message,"No Active Users!Message not sent.");
+      strcpy(message,"GROUP:No Active Users!Message not sent.");
       enc_size=encode_frame(1,1,0,strlen(message),(uint8_t *)message,encoded);
       send(client,encoded,enc_size,0);   
      }
@@ -364,6 +379,9 @@ void extract_username(int client,int index)
   if(status==0)
   strcpy(cl[index].name,username);
  }
+
+//function to send the list of online clients to all clients
+void send_client_list
 void main() {
     int sockfd,client;
     struct sockaddr_storage caddr;
@@ -372,8 +390,7 @@ void main() {
     int yes = 1;
     char s[INET6_ADDRSTRLEN];
     int status;
-    char buf[bufsize];
-    
+        
     // Setup server address struct
     memset(&hint, 0, sizeof(hint));
     hint.ai_family = AF_UNSPEC;
@@ -430,7 +447,7 @@ void main() {
 	extract_username(cl[num].fd,num);
 	printf("Connected to %s\n",cl[num].name);
 	num++;
-	
+	send_cleint_list();
 	pthread_t thread_id;
 	 if (pthread_create(&thread_id, NULL, handle_client, &client) != 0) 
 	 {
