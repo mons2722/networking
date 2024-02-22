@@ -143,6 +143,28 @@ int decode_websocket_frame_header(
     return  (2 + (n == 1 ? 2 : (n == 2 ? 8 : 0)));
 }
 
+void send_client_list()
+{
+   char message[bufsize];
+
+   for(int j=0;j<num;j++)
+    {
+    memset(message, 0, sizeof(message));
+    strcat(message, "CLIENTS:");
+
+    for (int i = 0; i < num; i++)
+    {
+        if (i!=j)
+        {
+            strcat(message, cl[i].name);
+            strcat(message, ":");
+        }
+    }
+    message[strlen(message)-1]='\0';
+    send(cl[j].fd,message,bufsize,0);
+    }
+}
+
 int process_websocket_frame (uint8_t *data, size_t length, char **decoded_data, int connfd,int index)
 {
     uint8_t fin, opcode, mask;
@@ -176,6 +198,7 @@ int process_websocket_frame (uint8_t *data, size_t length, char **decoded_data, 
 	for(int i=index;i<num-1;i++)
 	   cl[i]=cl[i+1];
 	num--;
+	send_client_list();
 	if(num==0)
 	   printf("No clients Connected!!\n");
 	else
@@ -380,8 +403,6 @@ void extract_username(int client,int index)
   strcpy(cl[index].name,username);
  }
 
-//function to send the list of online clients to all clients
-void send_client_list
 void main() {
     int sockfd,client;
     struct sockaddr_storage caddr;
@@ -390,7 +411,8 @@ void main() {
     int yes = 1;
     char s[INET6_ADDRSTRLEN];
     int status;
-        
+    char buf[bufsize];
+
     // Setup server address struct
     memset(&hint, 0, sizeof(hint));
     hint.ai_family = AF_UNSPEC;
@@ -447,7 +469,7 @@ void main() {
 	extract_username(cl[num].fd,num);
 	printf("Connected to %s\n",cl[num].name);
 	num++;
-	send_cleint_list();
+	send_client_list();
 	pthread_t thread_id;
 	 if (pthread_create(&thread_id, NULL, handle_client, &client) != 0) 
 	 {
