@@ -25,6 +25,84 @@ struct clients
   int no;
   char name[100];
 }cl[max];
+
+void generate_random_mask (uint8_t *mask)
+{
+    srand (time (NULL));
+
+    // Generate a random 32-bit mask
+    for (size_t i = 0; i < 4; ++i)
+        mask [i] = rand () & 0xFF;
+}
+
+// Function to mask payload data
+void mask_payload (uint8_t *payload, size_t payload_length, uint8_t *mask)
+{
+    for (size_t i = 0; i < payload_length; ++i)
+        payload [i] ^= mask [i % 4];
+}
+
+// Function to encode a complete WebSocket frame
+int encode_frame (
+    uint8_t fin,
+    uint8_t opcode,
+    uint8_t mask,
+    uint64_t payload_length,
+    uint8_t *payload,
+    uint8_t *frame_buffer
+)
+{
+    // Calculate header size based on payload length
+    int header_size = 2;
+    if (payload_length <= 125)
+    {
+        // Short form
+    }
+    else if (payload_length <= 65535)
+    {
+        // Medium form (2 additional bytes)
+        header_size += 2;
+    }
+    else
+    {
+        // Long form (8 additional bytes)
+        header_size += 8;
+    }
+
+    // Encode header bytes
+    frame_buffer [0] = (fin << 7) | (opcode & 0x0F);
+    frame_buffer [1] = mask << 7;
+    if (payload_length <= 125)
+        frame_buffer[1] |= payload_length;
+    else if (payload_length <= 65535)
+    {
+        frame_buffer [1] |= 126;
+        frame_buffer [2] = (payload_length >> 8) & 0xFF;
+        frame_buffer [3] = payload_length & 0xFF;
+    }
+    else
+    {
+        frame_buffer [1] |= 127;
+        uint64_t n = payload_length;
+        for (int i = 8; i >= 1; --i)
+        {
+            frame_buffer [i + 1] = n & 0xFF;
+            n >>= 8;
+        }
+    }
+
+    // Mask payload if requested
+    if (mask)
+    {
+        generate_random_mask (frame_buffer + header_size - 4);
+        mask_payload (payload, payload_length, frame_buffer + header_size - 4);
+    }
+
+    // Copy payload after header
+    memcpy (frame_buffer + header_size, payload, payload_length);
+    return header_size + payload_length; // Total frame size
+}
+
 // calculate accept_key for websocket
 void get_accept_key(char *sec, char *client_key)
 { 
@@ -61,6 +139,40 @@ void get_accept_key(char *sec, char *client_key)
 
     // Clean up BIO and base64 encoder
     BIO_free_all(b64);
+}
+
+//function to send clients list 
+void send_client_list()
+{
+   char message[bufsize];
+
+   for(int j=0;j<num;j++)
+    {
+    memset(message, 0, sizeof(message));
+    strcat(message, "CLIENTS:");
+    if(num>1)
+    {
+    for (int i = 0; i < num; i++)
+    {
+        if (i!=j)
+        {
+            strcat(message, cl[i].name);
+            strcat(message, ":");
+        }
+    }
+    message[strlen(message)-1]='\0';
+    }
+    else
+    {
+    sprintf(message,"CLIENTS:NO Active Users");
+    message[strlen(message)]='\0';
+    }
+//    printf("%s\n",message);
+    char encoded_mess[bufsize];
+      
+    int bytes=encode_frame(1,1,0,strlen(message),(uint8_t *)message,encoded_mess);
+    send(cl[j].fd,encoded_mess,bytes,0);
+    }
 }
 
 // Function to handle WebSocket handshake
@@ -143,35 +255,13 @@ int decode_websocket_frame_header(
     return  (2 + (n == 1 ? 2 : (n == 2 ? 8 : 0)));
 }
 
-void send_client_list()
-{
-   char message[bufsize];
-
-   for(int j=0;j<num;j++)
-    {
-    memset(message, 0, sizeof(message));
-    strcat(message, "CLIENTS:");
-
-    for (int i = 0; i < num; i++)
-    {
-        if (i!=j)
-        {
-            strcat(message, cl[i].name);
-            strcat(message, ":");
-        }
-    }
-    message[strlen(message)-1]='\0';
-    send(cl[j].fd,message,bufsize,0);
-    }
-}
-
 int process_websocket_frame (uint8_t *data, size_t length, char **decoded_data, int connfd,int index)
 {
     uint8_t fin, opcode, mask;
     uint64_t payload_length;
     uint8_t* masking_key;
 
-    int header_size = decode_websocket_frame_header (data, &fin, &opcode, &mask, &payload_length);
+ int header_size = decode_websocket_frame_header (data, &fin, &opcode, &mask, &payload_length);
     if (header_size == -1) 
     {
         printf ("Error decoding WebSocket frame header\n");
@@ -198,7 +288,7 @@ int process_websocket_frame (uint8_t *data, size_t length, char **decoded_data, 
 	for(int i=index;i<num-1;i++)
 	   cl[i]=cl[i+1];
 	num--;
-	send_client_list();
+      send_client_list();
 	if(num==0)
 	   printf("No clients Connected!!\n");
 	else
@@ -220,86 +310,10 @@ int process_websocket_frame (uint8_t *data, size_t length, char **decoded_data, 
     return 0;
 }
 
-void generate_random_mask (uint8_t *mask) 
-{
-    srand (time (NULL));
-
-    // Generate a random 32-bit mask
-    for (size_t i = 0; i < 4; ++i)
-        mask [i] = rand () & 0xFF;
-}
-
-// Function to mask payload data
-void mask_payload (uint8_t *payload, size_t payload_length, uint8_t *mask) 
-{
-    for (size_t i = 0; i < payload_length; ++i)
-        payload [i] ^= mask [i % 4];
-}
-
-// Function to encode a complete WebSocket frame
-int encode_frame (
-    uint8_t fin,
-    uint8_t opcode,
-    uint8_t mask,
-    uint64_t payload_length,
-    uint8_t *payload,
-    uint8_t *frame_buffer
-)
-{
-    // Calculate header size based on payload length
-    int header_size = 2;
-    if (payload_length <= 125)
-    {
-        // Short form
-    }
-    else if (payload_length <= 65535)
-    {
-        // Medium form (2 additional bytes)
-        header_size += 2;
-    }
-    else
-    {
-        // Long form (8 additional bytes)
-        header_size += 8;
-    }
-
-    // Encode header bytes
-    frame_buffer [0] = (fin << 7) | (opcode & 0x0F);
-    frame_buffer [1] = mask << 7;
-    if (payload_length <= 125)
-        frame_buffer[1] |= payload_length;
-    else if (payload_length <= 65535)
-    {
-        frame_buffer [1] |= 126;
-        frame_buffer [2] = (payload_length >> 8) & 0xFF;
-        frame_buffer [3] = payload_length & 0xFF;
-    }
-    else
-    {
-        frame_buffer [1] |= 127;
-        uint64_t n = payload_length;
-        for (int i = 8; i >= 1; --i)
-        {
-            frame_buffer [i + 1] = n & 0xFF;
-            n >>= 8;
-        }
-    }
-
-    // Mask payload if requested
-    if (mask)
-    {
-        generate_random_mask (frame_buffer + header_size - 4);
-        mask_payload (payload, payload_length, frame_buffer + header_size - 4);
-    }
-
-    // Copy payload after header
-    memcpy (frame_buffer + header_size, payload, payload_length);
-    return header_size + payload_length; // Total frame size
-}
-
 // Function to handle WebSocket data
 void *handle_client(void *arg)
-{ 
+{
+  send_client_list();     	
   int client=*((int *)arg);
   char buf[bufsize];
   char *decoded=NULL;
@@ -308,7 +322,7 @@ void *handle_client(void *arg)
   { 
     ssize_t bytes=recv(client,buf,sizeof(buf),0);
     buf[bytes]='\0';
-//     printf("!!!%s\n",buf);
+//  printf("!!!%s\n",buf);
        
      for(int i=0;i<num;i++)
     { if(client==cl[i].fd)
@@ -375,10 +389,11 @@ void *handle_client(void *arg)
     }
     else 
     { //revert sending error to client
-      strcpy(message,"GROUP:No Active Users!Message not sent.");
+      strcpy(message,"ERROR:No Active Users!Message not sent.");
       enc_size=encode_frame(1,1,0,strlen(message),(uint8_t *)message,encoded);
       send(client,encoded,enc_size,0);   
      }
+    
   }
 pthread_exit(NULL);  
 }
@@ -469,7 +484,6 @@ void main() {
 	extract_username(cl[num].fd,num);
 	printf("Connected to %s\n",cl[num].name);
 	num++;
-	send_client_list();
 	pthread_t thread_id;
 	 if (pthread_create(&thread_id, NULL, handle_client, &client) != 0) 
 	 {

@@ -11,6 +11,7 @@
             margin: 0;
             padding: 20px;
             box-sizing: border-box;
+            position: relative; /* To position the logout button */
         }
 
         .container {
@@ -20,6 +21,7 @@
             padding: 20px;
             border-radius: 8px;
             box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+            position: relative;
         }
 
         h1 {
@@ -42,6 +44,9 @@
             border: none;
             border-radius: 4px;
             cursor: pointer;
+            position: relative;
+           /* top: 10px; Adjust top position 
+            right: 10px;  Adjust right position */
         }
 
         button:hover {
@@ -57,11 +62,19 @@
             background-color: #f9f9f9;
             border: 1px solid #ddd;
             border-radius: 4px;
-            min-height: 200px;
+            min-height: 100px;
             max-height: 300px;
             overflow-y: auto;
         }
-
+        #messagesPersonal{
+             padding: 10px;
+            background-color: #f9f9f9;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            min-height: 100px;
+            max-height: 300px;
+            overflow-y: auto;
+        }
         .message-container {
             margin-top: 20px;
              display: flex;
@@ -78,7 +91,17 @@
             width: 100%;
             margin-bottom: 10px;
         }
-    </style>
+
+        #chatContainer h1 {
+        position: relative;
+        }
+
+        #chatContainer h1 button#logout {
+        position: absolute;
+        top: 0;
+        right: 0;
+        }
+ </style>
 </head>
 <body>
     <div class="container" id="usernameContainer">
@@ -88,7 +111,9 @@
     </div>
 
     <div class="container" id="chatContainer" style="display: none;">
-        <h1>Welcome <span id="usernameDisplay"></span></h1>
+        <h1>Welcome <span id="usernameDisplay"></span>
+             <button id="logout">Log Out</button>
+        </h1>
         <div class="message-container">
          <div>
                 <h2>Group Chat</h2>
@@ -102,14 +127,17 @@
     <div>
          <h2>Personal Chat</h2>
                 <select id="onlineClients">
+                
                     <!-- Dropdown for online clients will be populated dynamically -->
                 </select>
                 <div id="messagesPersonal"></div>
+                <div class="message-container">
                 <input type="text" id="messageInputPersonal" placeholder="Type a message">
                 <button id="sendPersonal">Send</button>
             </div>
             </div>
-        <button id="logout">Log Out</button>
+            </div>
+       
     </div>
     <script>
         document.addEventListener("DOMContentLoaded", function() {
@@ -158,19 +186,21 @@
     // Format the message and add it to the messages div
     groupMessagesDiv.innerHTML += `<div><strong>${username}:</strong> ${text}</div>`;
     } 
-    else 
-    {  groupMessagesDiv.innerHTML += "<div><span style='color: red;'>" + message + "</span></div>";
-    }
     }
     else if(message_type=="PERSONAL")
     {
        const username=parts[1];
        const text = parts.slice(2).join(':');
     const personalMessagesDiv = document.getElementById("messagesPersonal");
-    groupMessagesDiv.innerHTML += `<div><strong>${username}:</strong> ${text}</div>`;
+    personalMessagesDiv.innerHTML += `<div><strong>${username}:</strong> ${text}</div>`;
     }
-    else 
+    else if(message_type=="CLIENTS")
     {updateDrop(parts);}
+    else 
+    { const groupMessagesDiv = document.getElementById("messages");
+     groupMessagesDiv.innerHTML += "<div><span style='color: red;'>" + message + "</span></div>";
+    }
+
 }
     });
 
@@ -179,18 +209,21 @@
     // Clear existing options
     const onlineClientsDropdown = document.getElementById("onlineClients");
         onlineClientsDropdown.innerHTML = "";
-
-         // Add a default option
-        const defaultOption = document.createElement("option");
-        defaultOption.text = "Choose a client";
-        onlineClientsDropdown.add(defaultOption);
-
-    parts.forEach((user) => {
-    const option = document.createElement("option");
-    option.value = user;
-    option.text = user;
-    onlineClientsDropdown.add(option);
-});
+     const option = document.createElement("option");
+                option.value = "";
+                option.text = "Choose Client";
+                option.disabled = true;
+                option.selected = true;
+                onlineClientsDropdown.appendChild(option);
+    // Skip the first part as it denotes the message type ("CLIENTS")
+    for (let i = 1; i < parts.length; i++)
+     {
+        const user = parts[i];
+        const option = document.createElement("option");
+        option.value = user;
+        option.text = user;
+        onlineClientsDropdown.add(option);
+    }
     }
 
             socket.addEventListener("close", (event) => {
@@ -216,7 +249,9 @@ document.getElementById("sendGroup").addEventListener("click", function()
     });
             
     // Send Personal Message Button Click Event
-    document.getElementById("sendPersonal").addEventListener("click", function() {
+    document.getElementById("sendPersonal").addEventListener("click", 
+    function() {
+    const onlineClientsDropdown = document.getElementById("onlineClients");
         const recipient = onlineClientsDropdown.value;
         const message = messageInputPersonal.value.trim();
         if (recipient && message) {
@@ -234,6 +269,12 @@ document.getElementById("sendGroup").addEventListener("click", function()
      {
         // Close the WebSocket connection when the logout button is clicked
         socket.close();
+
+        // Clear the content of the chatContainer
+        document.getElementById("messages").innerHTML = "";
+        document.getElementById("messagesPersonal").innerHTML = "";
+        document.getElementById("onlineClients").innerHTML = "";    
+        
         // Show the username input container and hide the chat container
         usernameContainer.style.display = "block";
         chatContainer.style.display = "none";
