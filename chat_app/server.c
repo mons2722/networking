@@ -374,12 +374,13 @@ void *handle_client(void *arg)
     }
     else 
     {
-       printf("%s Message Received from %s: %s\n",parts[0],cl[index].name,parts[2]);
+    printf("%s Message Received from %s: %s\n",parts[0],cl[index].name,parts[2]);
     sprintf(message,"%s:%s:%s",parts[0],cl[index].name,parts[2]);
     enc_size=encode_frame(1,1,0,strlen(message),(uint8_t *)message,encoded);
     //send personal message
     for(int i=0;i<num;i++)
-    { if(strcmp(cl[i].name,parts[1])==0)
+    { 
+	    if(strcmp(cl[i].name,parts[1])==0)
 	    {send(cl[i].fd,encoded,enc_size,0);
              printf("Message sent to %s\n",parts[1]);
               break;
@@ -418,7 +419,8 @@ void extract_username(int client,int index)
   strcpy(cl[index].name,username);
  }
 
-void main() {
+void main()
+{
     int sockfd,client;
     struct sockaddr_storage caddr;
     struct addrinfo hint, *res, *p;
@@ -475,7 +477,7 @@ void main() {
     
     // Connect clients
     while(1)
-    {    sin_size = sizeof(caddr); 
+    {   sin_size = sizeof(caddr); 
         client= accept(sockfd, (struct sockaddr *)&caddr, &sin_size); 
         recv(client, buf, bufsize, 0);
 	websocket_handshake(client, buf);
